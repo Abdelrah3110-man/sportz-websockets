@@ -2,6 +2,7 @@ import express from 'express';
 import { matcheRouter } from './routes/matches.js';
 import http from "http";
 import { attachWebsocketServer } from './ws/server.js';
+import { securityMiddelware } from './arcjet.js';
 
 const PORT = Number(process.env.PORT || 8000);
 const HOST = process.env.HOST || "0.0.0.0" ;
@@ -17,7 +18,7 @@ app.use(express.json());
 app.get('/', (req, res) => {
   res.json({ message: 'Hello, this is a simple Express server!' });
 });
-
+app.use(securityMiddelware());
 app.use('/matches', matcheRouter);
 const { broadcastMatchCreated } = attachWebsocketServer(server);
 app.locals.broadcastMatchCreated = broadcastMatchCreated;
