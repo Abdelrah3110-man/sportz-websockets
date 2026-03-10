@@ -1,34 +1,42 @@
-import express from 'express';
-import { matcheRouter } from './routes/matches.js';
+import express from "express";
 import http from "http";
-import { attachWebsocketServer } from './ws/server.js';
-import { securityMiddelware } from './arcjet.js';
+import { matcheRouter } from "./routes/matches.js";
+import { CommentaryRouter } from "./routes/commentary.js";
+import { attachWebsocketServer } from "./ws/server.js";
+import { securityMiddelware } from "./arcjet.js";
 
 const PORT = Number(process.env.PORT || 8000);
-const HOST = process.env.HOST || "0.0.0.0" ;
+const HOST = process.env.HOST || "0.0.0.0";
 
 const app = express();
-
 const server = http.createServer(app);
 
-// Use JSON middleware
+const { broadcastMatchCreated, broadcastCommentary } =
+  attachWebsocketServer(server);
+
 app.use(express.json());
 
-// Route that returns a short message   
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello, this is a simple Express server!' });
+app.use((req, res, next) => {
+  res.locals.broadcastMatchCreated = broadcastMatchCreated;
+  res.locals.broadcastCommentary = broadcastCommentary;
+  next();
 });
+
+app.get("/", (req, res) => {
+  res.json({ message: "Hello, this is a simple Express server!" });
+});
+
 app.use(securityMiddelware());
-app.use('/matches', matcheRouter);
-const { broadcastMatchCreated } = attachWebsocketServer(server);
-app.locals.broadcastMatchCreated = broadcastMatchCreated;
 
+app.use("/matches", matcheRouter);
+app.use("/matches/:id/commentary", CommentaryRouter);
 
-// Start the server and log the URL
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, "0.0.0.0", () => {
   const displayHost = HOST === "0.0.0.0" ? "localhost" : HOST;
   const baseUrl = `http://${displayHost}:${PORT}`;
-  
+
   console.log(`Server is running on ${baseUrl}`);
-  console.log(`Websocket Server is running on ${baseUrl.replace("http", "ws")}/ws`);
+  console.log(
+    `Websocket Server is running on ${baseUrl.replace("http", "ws")}/ws`,
+  );
 });
