@@ -3,6 +3,14 @@ import { wsArcjet } from "../arcjet.js";
 
 const matchSubscribers = new Map();
 
+/**
+ * Register a socket as a subscriber for a given match and record that subscription on the socket.
+ *
+ * Ensures a subscriber set exists for the matchId, adds the socket to that set, and adds the matchId
+ * to the socket's `subscriptions` set.
+ * @param {string|number} matchId - Identifier of the match to subscribe to.
+ * @param {WebSocket} socket - The client's WebSocket connection to register.
+ */
 function subscribe(matchId, socket) {
   if (!matchSubscribers.has(matchId)) {
     matchSubscribers.set(matchId, new Set());
@@ -15,6 +23,11 @@ function subscribe(matchId, socket) {
   socket.subscriptions.add(matchId);
 }
 
+/**
+ * Remove a socket's subscription for a given match and clean up internal subscriber tracking.
+ * @param {string} matchId - The match identifier to unsubscribe from.
+ * @param {WebSocket & { subscriptions?: Set<string> }} socket - The socket to remove from the match's subscriber set; may hold a `subscriptions` Set of matchIds.
+ */
 function unsubscribe(matchId, socket) {
   const subscribers = matchSubscribers.get(matchId);
   if (!subscribers) return;
@@ -29,6 +42,12 @@ function unsubscribe(matchId, socket) {
   }
 }
 
+/**
+ * Remove the socket from every match subscription it is recorded on.
+ *
+ * Iterates the socket's `subscriptions` set (if present) and unsubscribes the socket from each match ID.
+ * @param {WebSocket} socket - WebSocket whose `subscriptions` (a Set of matchId strings) will be cleaned up.
+ */
 function cleanupSubscriptions(socket) {
   if (!socket.subscriptions) return;
 
@@ -37,17 +56,34 @@ function cleanupSubscriptions(socket) {
   }
 }
 
+/**
+ * Send a JSON-serializable payload to the socket if the socket is open.
+ * No action is taken when the socket is not in the OPEN state.
+ * @param {WebSocket} socket - The destination WebSocket.
+ * @param {*} payload - The value to serialize and send. Must be JSON-serializable.
+ */
 function sendJson(socket, payload) {
   if (socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify(payload));
 }
 
+/**
+ * Broadcasts a JSON-serializable payload to every client connected to the WebSocket server.
+ * @param {import('ws').WebSocketServer} wss - The WebSocket server whose connected clients will receive the payload.
+ * @param {*} payload - The value to be serialized to JSON and sent to each client.
+ */
 function broadcastToAll(wss, payload) {
   for (const client of wss.clients) {
     sendJson(client, payload);
   }
 }
 
+/**
+ * Send a JSON-serialized payload to all subscribed sockets for a given match.
+ *
+ * @param {string} matchId - Identifier of the match whose subscribers will receive the payload.
+ * @param {any} payload - Value to serialize and send to each subscribed client.
+ */
 function broadcastToMatch(matchId, payload) {
   const subscribers = matchSubscribers.get(matchId);
   if (!subscribers) return;
@@ -61,6 +97,19 @@ function broadcastToMatch(matchId, payload) {
   }
 }
 
+/**
+ * Attach a WebSocket endpoint to an existing HTTP server and provide match-focused broadcasting helpers.
+ *
+ * The created WebSocket server listens at "/ws", manages per-connection subscriptions for matches,
+ * handles "subscribe" and "unsubscribe" messages, optionally enforces wsArcjet protections on new
+ * connections, and cleans up subscriptions when connections close.
+ *
+ * @param {import('http').Server} server - The HTTP server to attach the WebSocket endpoint to.
+ * @returns {{ broadcastMatchCreated: (match: any) => void, broadcastCommentary: (matchId: string, entry: any) => void }}
+ *   An object with:
+ *   - broadcastMatchCreated(match): broadcast a `match_created` event to all connected clients.
+ *   - broadcastCommentary(matchId, entry): broadcast a `new_commentary` event to subscribers of the given matchId.
+ */
 export function attachWebsocketServer(server) {
   const wss = new WebSocketServer({
     server,
